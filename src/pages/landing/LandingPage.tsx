@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion'
 import { ArrowRight, Check, MoonStar, ShieldCheck, Sparkles, SunMedium, Zap } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Button } from '../../shared/components/button'
 import { useAppStore } from '../../store/useAppStore'
 
@@ -428,6 +428,12 @@ function LandingPage() {
               <span>Producto</span>
               <span>Precios</span>
               <span>Clientes</span>
+              <Link to="/terminos" className={isDark ? 'transition hover:text-white' : 'transition hover:text-slate-900'}>
+                Términos
+              </Link>
+              <Link to="/privacidad" className={isDark ? 'transition hover:text-white' : 'transition hover:text-slate-900'}>
+                Privacidad
+              </Link>
             </div>
 
             <span>© 2026 AgendaBOT</span>

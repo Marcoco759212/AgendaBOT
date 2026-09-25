@@ -12,6 +12,8 @@ import BusinessSettingsForm from './features/business/components/BusinessSetting
 import ServiceCatalog from './features/services/components/ServiceCatalog'
 import CustomerList from './features/customers/components/CustomerList'
 import LandingPage from './pages/landing/LandingPage'
+import TermsPage from './pages/legal/TermsPage'
+import PrivacyPage from './pages/legal/PrivacyPage'
 import BillingSection from './features/billing/components/BillingSection'
 import AccountSecuritySection from './features/auth/components/AccountSecuritySection'
 import AuthScreen from './features/auth/components/AuthScreen'
@@ -555,6 +557,8 @@ function App() {
       <Route path="/forgot-password" element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <ForgotPasswordScreen />} />
       <Route path="/reset-password" element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <ResetPasswordScreen />} />
       <Route path="/landing" element={<LandingPage />} />
+      <Route path="/terminos" element={<TermsPage />} />
+      <Route path="/privacidad" element={<PrivacyPage />} />
       <Route path="/dashboard" element={isAuthenticated ? <AppShell /> : <Navigate to="/login" replace />} />
       <Route path="/dashboard/account" element={isAuthenticated ? <AppShell /> : <Navigate to="/login" replace />} />
       <Route path="/dashboard/calendar" element={isAuthenticated ? <AppShell /> : <Navigate to="/login" replace />} />
