@@ -1,7 +1,14 @@
 export type AppointmentStatus = 'confirmed' | 'pending' | 'cancelled'
-export type ViewName = 'landing' | 'dashboard' | 'calendar' | 'clients' | 'services' | 'settings' | 'billing' | 'account' | 'team'
+export type ViewName = 'landing' | 'dashboard' | 'calendar' | 'clients' | 'services' | 'billing' | 'account' | 'settings' | 'team'
 export type BillingCycle = 'monthly' | 'annual'
 export type PlanName = 'Starter' | 'Pro' | 'Business'
+
+export interface TenantDaySchedule {
+  start: string
+  end: string
+  enabled: boolean
+  prompt_custom_ia: string
+}
 
 export interface Tenant {
   id: string
@@ -9,9 +16,14 @@ export interface Tenant {
   city: string
   speciality: string
   address: string
+  locationReference?: string
+  timezone?: string
+  promptCustomIa?: string
+  horarioAtencion?: Record<string, TenantDaySchedule> | null
   active: boolean
   calendarLinked: boolean
   role?: 'owner' | 'admin' | 'staff'
+  needsSetup?: boolean
 }
 
 export interface Customer {
@@ -37,6 +49,7 @@ export interface Appointment {
   tenantId: string
   customer: Customer
   service: string
+  serviceId?: string
   date: string
   time: string
   status: AppointmentStatus

@@ -76,13 +76,26 @@ export async function apiRequest<T>(
   })
 
   const contentType = response.headers.get('content-type') ?? ''
-  const payload = contentType.includes('application/json') ? await response.json() : await response.text()
+  const rawText = await response.text()
+  // Algunos nodos "Respond to Webhook" (modo firstIncomingItem) mandan Content-Type: application/json
+  // con el cuerpo vacio cuando el nodo anterior no produjo ningun item (ej. un UPDATE ... RETURNING
+  // que no encontro filas). response.json() truena con "Unexpected end of JSON input" en ese caso;
+  // lo tratamos como body vacio en vez de dejar que la excepcion reviente la llamada.
+  let payload: unknown = rawText
+  if (contentType.includes('application/json') && rawText) {
+    try {
+      payload = JSON.parse(rawText)
+    } catch {
+      payload = null
+    }
+  }
 
   if (!response.ok) {
+    const payloadObject = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : null
     const message =
-      typeof payload === 'string'
+      typeof payload === 'string' && payload
         ? payload
-        : payload?.message || payload?.error || 'La solicitud a la API falló.'
+        : (payloadObject?.message as string | undefined) || (payloadObject?.error as string | undefined) || 'La solicitud a la API falló.'
 
     if (response.status === 401 && !isAuthEndpoint(endpoint)) {
       forceLogout()

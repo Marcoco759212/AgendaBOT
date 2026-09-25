@@ -45,3 +45,5 @@ Thumbs.db
 
 # Cobertura de pruebas (Jest, Vitest)
 coverage/
+
+.claude/

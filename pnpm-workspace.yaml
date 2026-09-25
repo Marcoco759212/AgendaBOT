@@ -1,0 +1,4 @@
+allowBuilds:
+  esbuild: false
+overrides:
+  vite: 8.2.2

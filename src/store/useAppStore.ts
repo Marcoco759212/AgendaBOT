@@ -1,6 +1,23 @@
 import { create } from 'zustand'
-import { apiRequest, API_BASE_URL, changePassword, forgotPassword, listTeamMembers, removeTeamMember, resetPassword, updateTeamMemberRole } from '../lib/api'
-import type { Appointment, AvailabilitySlot, BillingCycle, BillingInvoice, BillingPlan, Customer, CustomerDetail, PlanName, RecentActivityItem, Service, Tenant, ViewName } from '../types'
+import {
+  changePassword as changePasswordApi,
+  forgotPassword as forgotPasswordApi,
+  login as loginApi,
+  register as registerApi,
+  resetPassword as resetPasswordApi,
+} from '../api/auth.api'
+import {
+  getBusiness,
+  updateBusiness as updateBusinessApi,
+} from '../api/business.api'
+import { getSummary, getRecentActivity as getRecentActivityApi } from '../api/analytics.api'
+import { getAppointments, updateAppointment as updateAppointmentApi, createAppointment as createAppointmentApi } from '../api/appointments.api'
+import { getCustomers, createCustomer as createCustomerApi } from '../api/customers.api'
+import { getAvailability } from '../api/availability.api'
+import { getServices, createService as createServiceApi, updateService as updateServiceApi } from '../api/services.api'
+import { getTeam, inviteMember } from '../api/team.api'
+import { API_BASE_URL, apiRequest } from '../lib/api'
+import type { Appointment, AppointmentStatus, AvailabilitySlot, BillingCycle, BillingInvoice, BillingPlan, Customer, CustomerDetail, PlanName, RecentActivityItem, Service, Tenant, ViewName } from '../types'
 
 interface UserProfile {
   id?: string
@@ -55,6 +72,7 @@ interface AppState {
   recentActivity: RecentActivityItem[]
   customerDetail: CustomerDetail | null
   isHydrated: boolean
+  dashboardError: string | null
 
   setActiveTenant: (tenantId: string) => void
   restoreSession: () => Promise<void>
@@ -79,8 +97,9 @@ interface AppState {
   loadAvailability: (serviceId: string, date: string) => Promise<void>
   setLastAppointmentError: (message: string | null) => void
   setAvailabilityMessage: (message: string | null) => void
+  setDashboardError: (message: string | null) => void
   addCustomer: (data: { nombre: string; phoneNumber: string; email?: string }) => Promise<Customer>
-  updateBusiness: (business: Partial<Tenant> & { nombre?: string; timezone?: string; horario_atencion?: Record<string, unknown>; prompt_custom_ia?: string; google_calendar_id?: string }) => Promise<void>
+  updateBusiness: (business: Partial<Tenant> & { nombre?: string; timezone?: string; horario_atencion?: Record<string, unknown>; prompt_custom_ia?: string; google_calendar_id?: string; direccion?: string; referencias_direccion?: string }) => Promise<void>
   forgotPassword: (email: string) => Promise<string>
   resetPassword: (payload: { token: string; new_password: string }) => Promise<string>
   changePassword: (payload: { current_password: string; new_password: string }) => Promise<string>
@@ -90,93 +109,17 @@ interface AppState {
   inviteTeamMember: (member: { nombre: string; email: string; password: string; role: 'admin' | 'staff' }) => Promise<{ created: boolean; user: { id: string; email: string; nombre: string }; role: 'admin' | 'staff'; password: string }>
   updateService: (serviceId: string, patch: ServicePatch) => Promise<void>
   cancelAppointment: (appointmentId: string) => Promise<void>
+  editAppointment: (appointmentId: string, patch: { date?: string; time?: string; serviceId?: string; amount?: number }) => Promise<void>
   addService: (service: Service) => Promise<void>
   addAppointment: (appointment: AppointmentInput) => Promise<void>
-  addTenant: (tenant: Tenant) => void
+  addTenantFromServer: (tenant: Partial<Tenant> | Record<string, unknown>) => void
+  clearTenantSetupFlag: (tenantId: string) => void
 }
 
 const getActiveTenantId = () => {
   if (typeof window === 'undefined') return ''
   return window.localStorage.getItem('agendabot_active_tenant_id') ?? ''
 }
-
-const fallbackTenants: Tenant[] = [
-  {
-    id: getActiveTenantId() || 'tenant-demo',
-    name: 'Estudio Centro',
-    city: 'Ciudad de México',
-    speciality: 'Belleza y estética',
-    address: 'Av. Reforma 1250',
-    active: true,
-    calendarLinked: true,
-  },
-  {
-    id: 'tenant-2',
-    name: 'Consultorio Pedregal',
-    city: 'Álvaro Obregón',
-    speciality: 'Salud y medicina estética',
-    address: 'Camino Real 220',
-    active: false,
-    calendarLinked: true,
-  },
-]
-
-const fallbackCustomers: Customer[] = [
-  {
-    id: 'cus-demo-1',
-    name: 'María López',
-    phone: '+52 55 2345 6120',
-    email: 'maria.lopez@email.com',
-    avatar: 'ML',
-  },
-  {
-    id: 'cus-demo-2',
-    name: 'Sofía Ramírez',
-    phone: '+52 55 2990 2715',
-    email: 'sofia.r@email.com',
-    avatar: 'SR',
-  },
-]
-
-const fallbackServices: Service[] = [
-  {
-    id: 'svc-demo-1',
-    name: 'Limpieza Dental Premium',
-    duration: 45,
-    price: 1200,
-    description: 'Limpieza integral con diagnóstico de salud bucal y revisión visual.',
-    category: 'Salud',
-  },
-  {
-    id: 'svc-demo-2',
-    name: 'Corte de Cabello + Styling',
-    duration: 60,
-    price: 850,
-    description: 'Corte personalizado con lavado, peinado y asesoría de estilo.',
-    category: 'Belleza',
-  },
-]
-
-const fallbackAppointments: Appointment[] = [
-  {
-    id: 'apt-demo-1',
-    tenantId: getActiveTenantId() || 'tenant-demo',
-    customer: {
-      id: 'cus-demo-1',
-      name: 'María López',
-      phone: '+52 55 2345 6120',
-      email: 'maria.lopez@email.com',
-      avatar: 'ML',
-    },
-    service: 'Limpieza Dental Premium',
-    date: '2026-09-07',
-    time: '09:30',
-    status: 'confirmed',
-    channel: 'WhatsApp',
-    notes: ['Confirmó disponibilidad por WhatsApp.'],
-    amount: 1200,
-  },
-]
 
 const defaultBillingPlan: BillingPlan = {
   id: 'plan-pro',
@@ -213,6 +156,7 @@ const unwrapCollection = <T>(payload: unknown): T => {
     if ('customers' in entry && entry.customers !== undefined) return unwrapCollection<T>(entry.customers)
     if ('business' in entry && entry.business !== undefined) return unwrapCollection<T>(entry.business)
     if ('tenant' in entry && entry.tenant !== undefined) return unwrapCollection<T>(entry.tenant)
+    if ('members' in entry && entry.members !== undefined) return unwrapCollection<T>(entry.members)
   }
 
   return payload as T
@@ -236,11 +180,19 @@ const normalizeService = (item: Record<string, unknown>, fallbackId = `svc-${Dat
   activo: item.activo === undefined ? item.active === undefined ? true : Boolean(item.active) : Boolean(item.activo),
 })
 
+const normalizeAppointmentStatus = (raw: unknown): AppointmentStatus => {
+  const value = String(raw ?? '').toLowerCase()
+
+  if (value === 'confirmed' || value === 'confirmada' || value === 'confirmado') return 'confirmed'
+  if (value === 'cancelled' || value === 'canceled' || value === 'cancelada' || value === 'cancelado') return 'cancelled'
+
+  return 'pending'
+}
+
 const normalizeAppointment = (item: Record<string, unknown>, fallbackId = `apt-${Date.now()}`): Appointment => {
   const rawCustomer = (item.customer ?? item.cliente ?? item.client ?? {}) as Record<string, unknown>
   const rawDate = item.fecha_inicio ?? item.start_at ?? item.date ?? item.start_date ?? '2026-09-10'
   const rawTime = item.start_time ?? item.time ?? item.hora ?? '10:00'
-  const rawStatus = String(item.estado ?? item.status ?? 'pending').toLowerCase()
 
   const parsedDate = new Date(String(rawDate))
   const dateValue = Number.isNaN(parsedDate.getTime()) ? String(rawDate).slice(0, 10) : parsedDate.toISOString().slice(0, 10)
@@ -249,6 +201,7 @@ const normalizeAppointment = (item: Record<string, unknown>, fallbackId = `apt-$
   return {
     id: String(item.id ?? item.appointment_id ?? item.uuid ?? fallbackId),
     tenantId: String(item.tenant_id ?? item.tenantId ?? getActiveTenantId()),
+    serviceId: item.service_id !== undefined && item.service_id !== null ? String(item.service_id) : undefined,
     customer: {
       id: String(rawCustomer.id ?? item.customer_id ?? item.customerId ?? `cus-${Date.now()}`),
       name: String(rawCustomer.nombre ?? rawCustomer.name ?? item.cliente ?? item.customer_name ?? 'Cliente nuevo'),
@@ -259,7 +212,7 @@ const normalizeAppointment = (item: Record<string, unknown>, fallbackId = `apt-$
     service: String(item.servicio ?? item.service_nombre ?? item.service ?? item.name ?? 'Cita agendada'),
     date: dateValue,
     time: timeValue,
-    status: rawStatus === 'cancelled' || rawStatus === 'canceled' ? 'cancelled' : rawStatus === 'pending' ? 'pending' : 'confirmed',
+    status: normalizeAppointmentStatus(item.estado ?? item.status),
     channel: String(item.channel ?? 'WhatsApp') as Appointment['channel'],
     notes: Array.isArray(item.notes) ? item.notes.map((note) => String(note)) : [String(item.notes ?? item.descripcion ?? item.description ?? 'Creada desde integración API.')],
     amount: Number(item.precio ?? item.amount ?? item.price ?? item.total ?? 0),
@@ -271,7 +224,11 @@ const normalizeTenant = (payload: Record<string, unknown>): Tenant => ({
   name: String(payload.nombre ?? payload.name ?? payload.business_name ?? 'Tenant'),
   city: String(payload.city ?? payload.ciudad ?? 'Ciudad de México'),
   speciality: String(payload.speciality ?? payload.segment ?? payload.especialidad ?? 'Atención profesional'),
-  address: String(payload.address ?? payload.street_address ?? payload.direccion ?? 'Dirección no disponible'),
+  address: String(payload.address ?? payload.street_address ?? payload.direccion ?? ''),
+  locationReference: String(payload.locationReference ?? payload.referencias_direccion ?? ''),
+  timezone: String(payload.timezone ?? 'America/Mexico_City'),
+  promptCustomIa: String(payload.promptCustomIa ?? payload.prompt_custom_ia ?? ''),
+  horarioAtencion: (payload.horarioAtencion ?? payload.horario_atencion ?? null) as Tenant['horarioAtencion'],
   active: Boolean(payload.active ?? true),
   calendarLinked: Boolean(payload.calendar_linked ?? payload.google_calendar_id ?? false),
   role: (String(payload.role ?? payload.rol ?? 'owner') as 'owner' | 'admin' | 'staff'),
@@ -294,18 +251,18 @@ const normalizeAvailability = (item: Record<string, unknown>, fallbackId = `slot
 
 export const useAppStore = create<AppState>((set, get) => ({
   user: {
-    name: 'Alicia Vega',
-    email: 'alicia@agendabot.io',
-    role: 'Owner / Admin',
+    name: 'Usuario',
+    email: '',
+    role: 'owner',
   },
-  tenants: fallbackTenants,
-  customers: fallbackCustomers,
-  activeTenantId: getActiveTenantId(),
+  tenants: [],
+  customers: [],
+  activeTenantId: getActiveTenantId() ?? '',
   isAuthenticated: false,
   isSessionReady: false,
   activeView: 'landing',
-  appointments: fallbackAppointments,
-  services: fallbackServices,
+  appointments: [],
+  services: [],
   selectedAppointmentId: null,
   statusFilter: 'all',
   theme: 'dark',
@@ -323,45 +280,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   availability: [],
   availabilityMessage: null,
   lastAppointmentError: null,
-  analyticsKpis: [
-    { id: 'kpi-1', label: 'Citas totales del mes', value: '1,284', delta: '+18.2%', positive: true, accent: 'emerald' },
-    { id: 'kpi-2', label: 'Tasa de conversión del bot', value: '34.6%', delta: '+6.4%', positive: true, accent: 'violet' },
-    { id: 'kpi-3', label: 'Ingresos estimados', value: '$84.6K', delta: '+12.1%', positive: true, accent: 'emerald' },
-    { id: 'kpi-4', label: 'Cancelaciones', value: '42', delta: '-7.8%', positive: false, accent: 'rose' },
-  ],
-  dailyBookings: [
-    { day: 'Lun', bookings: 24 },
-    { day: 'Mar', bookings: 38 },
-    { day: 'Mié', bookings: 31 },
-    { day: 'Jue', bookings: 44 },
-    { day: 'Vie', bookings: 52 },
-    { day: 'Sáb', bookings: 46 },
-    { day: 'Dom', bookings: 28 },
-  ],
-  hourlyDemand: [
-    { hour: '09:00', demand: 12 },
-    { hour: '10:00', demand: 24 },
-    { hour: '11:00', demand: 28 },
-    { hour: '12:00', demand: 18 },
-    { hour: '14:00', demand: 31 },
-    { hour: '15:00', demand: 30 },
-    { hour: '16:00', demand: 22 },
-    { hour: '17:00', demand: 16 },
-  ],
-  serviceMix: [
-    { name: 'Belleza', value: 38, color: '#10B981' },
-    { name: 'Salud', value: 27, color: '#8B5CF6' },
-    { name: 'Estética', value: 22, color: '#F59E0B' },
-    { name: 'Spa', value: 13, color: '#F43F5E' },
-  ],
-  recentActivity: [
-    { id: 'act-1', message: 'Bot agendó cita con María López vía WhatsApp hace 3 min', time: 'Hace 3 min', type: 'success' },
-    { id: 'act-2', message: 'El servicio de Botox Facial tuvo un 22% más de interés hoy', time: 'Hace 15 min', type: 'ai' },
-    { id: 'act-3', message: 'Sofía Ramírez respondió al flujo de confirmación y quedó pendiente', time: 'Hace 34 min', type: 'pending' },
-    { id: 'act-4', message: 'Se sincronizó un evento nuevo en Google Calendar', time: 'Hace 1 hr', type: 'sync' },
-  ],
+  analyticsKpis: [],
+  dailyBookings: [],
+  hourlyDemand: [],
+  serviceMix: [],
+  recentActivity: [],
   customerDetail: null,
   isHydrated: false,
+  dashboardError: null,
 
   setActiveTenant: (tenantId) => {
     set({ activeTenantId: tenantId })
@@ -383,7 +309,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const rawActiveTenant = window.localStorage.getItem('agendabot_active_tenant_id')
 
       if (!token || !rawUser || !rawTenants) {
-        set({ isAuthenticated: false, isSessionReady: true })
+        set({ isAuthenticated: false, isSessionReady: true, tenants: [], activeTenantId: '', customers: [], services: [], appointments: [] })
         return
       }
 
@@ -402,12 +328,24 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       const user = normalizeUser(JSON.parse(rawUser) as Record<string, unknown>)
       const normalizedTenants = (JSON.parse(rawTenants) as unknown[]).map((tenant) => normalizeTenant((tenant as Record<string, unknown>) ?? {}))
-      const fallbackTenantId = normalizedTenants[0]?.id ?? rawActiveTenant ?? getActiveTenantId()
+      const nextTenantId = rawActiveTenant && normalizedTenants.some((tenant) => tenant.id === rawActiveTenant) ? rawActiveTenant : normalizedTenants[0]?.id ?? ''
+
+      // Importante: getActiveTenantId() (usado por hydrateFromApi, loadCustomers, etc.) lee
+      // directo de localStorage, no del estado de Zustand. Si rawActiveTenant estaba vacio o
+      // ya no correspondia a ningun tenant, hay que persistir el fallback aqui tambien; si no,
+      // el estado en memoria queda correcto pero localStorage se queda con el valor viejo/invalido
+      // y las siguientes llamadas al backend mandan un tenant_id que no existe (0 filas -> respuesta
+      // vacia -> "Unexpected end of JSON input" al hacer response.json()).
+      if (nextTenantId) {
+        window.localStorage.setItem('agendabot_active_tenant_id', nextTenantId)
+      } else {
+        window.localStorage.removeItem('agendabot_active_tenant_id')
+      }
 
       set({
         user,
-        tenants: normalizedTenants.length > 0 ? normalizedTenants : fallbackTenants,
-        activeTenantId: rawActiveTenant && normalizedTenants.some((tenant) => tenant.id === rawActiveTenant) ? rawActiveTenant : fallbackTenantId,
+        tenants: normalizedTenants,
+        activeTenantId: nextTenantId,
         isAuthenticated: true,
         isSessionReady: true,
       })
@@ -425,10 +363,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   login: async (email, password) => {
-    const response = await apiRequest<{ token: string; user?: Record<string, unknown>; tenants?: Array<Record<string, unknown>> }>('/api/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ email, password }),
-    })
+    const response = await loginApi(email, password)
 
     const token = response.token
     const user = normalizeUser(response.user ?? null)
@@ -440,13 +375,17 @@ export const useAppStore = create<AppState>((set, get) => ({
       window.localStorage.setItem('agendabot_token', token)
       window.localStorage.setItem('agendabot_user', JSON.stringify(user))
       window.localStorage.setItem('agendabot_tenants', JSON.stringify(normalizedTenants))
-      window.localStorage.setItem('agendabot_active_tenant_id', normalizedTenants[0].id)
+      if (normalizedTenants[0]) {
+        window.localStorage.setItem('agendabot_active_tenant_id', normalizedTenants[0].id)
+      } else {
+        window.localStorage.removeItem('agendabot_active_tenant_id')
+      }
     }
 
     set({
       user,
       tenants: normalizedTenants,
-      activeTenantId: normalizedTenants[0].id,
+      activeTenantId: normalizedTenants[0]?.id ?? '',
       isAuthenticated: true,
       isSessionReady: true,
     })
@@ -455,15 +394,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   register: async (payload) => {
-    const response = await apiRequest<{ token: string; user?: Record<string, unknown>; tenant?: Record<string, unknown> }>('/api/auth/register', {
-      method: 'POST',
-      body: JSON.stringify({
-        email: payload.email,
-        password: payload.password,
-        nombre_negocio: payload.nombre_negocio,
-        nombre_usuario: payload.nombre_usuario,
-        timezone: payload.timezone ?? 'America/Mexico_City',
-      }),
+    const response = await registerApi({
+      email: payload.email,
+      password: payload.password,
+      nombre_negocio: payload.nombre_negocio,
+      nombre_usuario: payload.nombre_usuario,
+      timezone: payload.timezone ?? 'America/Mexico_City',
     })
 
     const token = response.token
@@ -475,13 +411,15 @@ export const useAppStore = create<AppState>((set, get) => ({
       window.localStorage.setItem('agendabot_token', token)
       window.localStorage.setItem('agendabot_user', JSON.stringify(user))
       window.localStorage.setItem('agendabot_tenants', JSON.stringify(normalizedTenants))
-      window.localStorage.setItem('agendabot_active_tenant_id', tenant.id)
+      if (tenant.id) {
+        window.localStorage.setItem('agendabot_active_tenant_id', tenant.id)
+      }
     }
 
     set({
       user,
       tenants: normalizedTenants,
-      activeTenantId: tenant.id,
+      activeTenantId: tenant.id ?? '',
       isAuthenticated: true,
       isSessionReady: true,
     })
@@ -499,8 +437,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     set({
       user: { name: 'Usuario', email: '', role: 'owner' },
-      tenants: fallbackTenants,
-      activeTenantId: getActiveTenantId() || '',
+      tenants: [],
+      activeTenantId: '',
       isAuthenticated: false,
       isSessionReady: true,
     })
@@ -575,10 +513,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const tenantId = getActiveTenantId()
       const [servicesResponse, appointmentsResponse, businessResponse, customersResponse] = await Promise.all([
-        apiRequest<unknown>('/api/services', { method: 'GET' }, { tenant_id: tenantId }),
-        apiRequest<unknown>('/api/appointments', { method: 'GET' }, { tenant_id: tenantId }),
-        apiRequest<unknown>('/api/business', { method: 'GET' }, { tenant_id: tenantId }),
-        apiRequest<unknown>('/api/customers', { method: 'GET' }, { tenant_id: tenantId }),
+        getServices(tenantId),
+        getAppointments(tenantId),
+        getBusiness(tenantId),
+        getCustomers(tenantId),
       ])
 
       const services = unwrapCollection<Service[]>(servicesResponse)
@@ -587,35 +525,50 @@ export const useAppStore = create<AppState>((set, get) => ({
       const customers = unwrapCollection<unknown[]>(customersResponse)
 
       set({
-        services: Array.isArray(services) && services.length > 0 ? services.map((item, index) => normalizeService((item as unknown as Record<string, unknown>) ?? {}, `svc-${index + 1}`)) : fallbackServices,
-        appointments: Array.isArray(appointments) && appointments.length > 0 ? appointments.map((item, index) => normalizeAppointment((item as unknown as Record<string, unknown>) ?? {}, `apt-${index + 1}`)) : fallbackAppointments,
-        customers: Array.isArray(customers) && customers.length > 0 ? customers.map((item) => normalizeCustomer((item as unknown as Record<string, unknown>) ?? {})) : fallbackCustomers,
+        services: Array.isArray(services) ? services.map((item, index) => normalizeService((item as unknown as Record<string, unknown>) ?? {}, `svc-${index + 1}`)) : [],
+        appointments: Array.isArray(appointments) ? appointments.map((item, index) => normalizeAppointment((item as unknown as Record<string, unknown>) ?? {}, `apt-${index + 1}`)) : [],
+        customers: Array.isArray(customers) ? customers.map((item) => normalizeCustomer((item as unknown as Record<string, unknown>) ?? {})) : [],
+        // Se limpia el detalle de cliente seleccionado: ahora que este metodo tambien corre al
+        // cambiar de negocio (no solo al montar), si habia un cliente abierto de otro tenant
+        // se quedaba mostrado hasta que el usuario eligiera uno nuevo manualmente.
+        customerDetail: null,
         isHydrated: true,
+        dashboardError: null,
       })
 
       if (business && typeof business === 'object') {
         const normalizedBusiness = normalizeTenant(business as Record<string, unknown>)
-        set({
-          tenants: [normalizedBusiness],
-          activeTenantId: normalizedBusiness.id,
+        set((state) => {
+          const exists = state.tenants.some((tenant) => tenant.id === normalizedBusiness.id)
+          const nextTenants = exists
+            ? state.tenants.map((tenant) => (tenant.id === normalizedBusiness.id ? { ...tenant, ...normalizedBusiness } : tenant))
+            : [normalizedBusiness, ...state.tenants]
+
+          if (typeof window !== 'undefined') {
+            window.localStorage.setItem('agendabot_tenants', JSON.stringify(nextTenants))
+          }
+
+          return { tenants: nextTenants }
         })
       }
     } catch (error) {
-      console.warn('API hydration failed; using demo fallback data.', error)
-      set({ isHydrated: true })
+      console.warn('API hydration failed; the store remains empty until the backend is available.', error)
+      set({ services: [], appointments: [], customers: [], isHydrated: true, dashboardError: 'No pudimos cargar la informacion de tu negocio. Verifica tu conexion e intenta de nuevo.' })
     }
   },
 
   loadCustomers: async () => {
     try {
       const tenantId = getActiveTenantId()
-      const response = await apiRequest<unknown>('/api/customers', { method: 'GET' }, { tenant_id: tenantId })
+      const response = await getCustomers(tenantId)
       const customers = unwrapCollection<unknown[]>(response)
       set({
-        customers: Array.isArray(customers) && customers.length > 0 ? customers.map((item) => normalizeCustomer((item as unknown as Record<string, unknown>) ?? {})) : fallbackCustomers,
+        customers: Array.isArray(customers) ? customers.map((item) => normalizeCustomer((item as unknown as Record<string, unknown>) ?? {})) : [],
+        dashboardError: null,
       })
     } catch (error) {
       console.warn('Customers could not be loaded from the backend.', error)
+      set({ customers: [], dashboardError: 'No pudimos cargar la lista de clientes.' })
     }
   },
 
@@ -651,27 +604,27 @@ export const useAppStore = create<AppState>((set, get) => ({
           email: safeEmail,
           appointments: safeList.map((appointment) => {
             const item = appointment as Record<string, unknown>
-            const rawStatus = String(item.estado ?? item.status ?? 'pending').toLowerCase()
             return {
               id: String(item.id ?? item.appointment_id ?? 'apt-local'),
               date: String(item.fecha_inicio ?? item.date ?? item.start_at ?? '2026-09-10').slice(0, 10),
-              status: rawStatus === 'cancelled' || rawStatus === 'canceled' ? 'cancelled' : rawStatus === 'confirmed' ? 'confirmed' : 'pending',
+              status: normalizeAppointmentStatus(item.estado ?? item.status),
               amount: Number(item.precio ?? item.amount ?? item.price ?? 0),
               service: String(item.servicio ?? item.service ?? item.service_nombre ?? 'Servicio'),
             }
           }),
         },
+        dashboardError: null,
       })
     } catch (error) {
       console.warn('Customer detail could not be loaded from the backend.', error)
-      set({ customerDetail: null })
+      set({ customerDetail: null, dashboardError: 'No pudimos cargar el detalle del cliente.' })
     }
   },
 
   loadAnalytics: async (range = '30d') => {
     try {
       const tenantId = getActiveTenantId()
-      const response = await apiRequest<unknown>('/api/analytics/summary', { method: 'GET' }, { tenant_id: tenantId, range })
+      const response = await getSummary(tenantId, range)
       const payload = unwrapCollection<Record<string, unknown>>(response)
       const source = payload && typeof payload === 'object' ? payload : {}
       const kpis = (source.kpis ?? source.metrics ?? {}) as Record<string, unknown>
@@ -765,6 +718,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       ]
 
       set({
+        dashboardError: null,
         analyticsKpis: baseKpis.map((item) => ({
           ...item,
           value: item.id.includes('cancelaciones') && !String(item.value).includes('%') ? String(item.value) : item.value,
@@ -775,17 +729,19 @@ export const useAppStore = create<AppState>((set, get) => ({
       })
     } catch (error) {
       console.warn('Analytics could not be loaded from the backend.', error)
+      set({ dashboardError: 'No pudimos cargar las metricas del dashboard.' })
     }
   },
 
   loadRecentActivity: async (limit = 10) => {
     try {
       const tenantId = getActiveTenantId()
-      const response = await apiRequest<unknown>('/api/activity/recent', { method: 'GET' }, { tenant_id: tenantId, limit: String(limit) })
+      const response = await getRecentActivityApi(tenantId, limit)
       const payload = unwrapCollection<unknown[]>(response)
       const activity = Array.isArray(payload) ? payload : []
 
       set({
+        dashboardError: null,
         recentActivity: activity.map((item) => {
           const entry = item as Record<string, unknown>
           const status = String(entry.estado ?? entry.status ?? 'success')
@@ -802,13 +758,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       })
     } catch (error) {
       console.warn('Recent activity could not be loaded from the backend.', error)
+      set({ dashboardError: 'No pudimos cargar la actividad reciente.' })
     }
   },
 
-  loadAvailability: async (serviceId: string, date: string) => {
+  loadAvailability: async (_serviceId: string, _date: string) => {
     try {
       const tenantId = getActiveTenantId()
-      const response = await apiRequest<Record<string, unknown>>('/api/availability', { method: 'GET' }, { tenant_id: tenantId, service_id: serviceId, date })
+      const response = await getAvailability(tenantId)
       const rawSlots = Array.isArray(response?.slots) ? response.slots : Array.isArray(response?.items) ? response.items : []
       const available = typeof response?.available === 'boolean' ? response.available : rawSlots.length > 0
       const reason = typeof response?.reason === 'string' ? response.reason : null
@@ -832,6 +789,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ availabilityMessage: message })
   },
 
+  setDashboardError: (message) => {
+    set({ dashboardError: message })
+  },
+
   addCustomer: async (data) => {
     try {
       const tenantId = getActiveTenantId()
@@ -842,10 +803,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         email: data.email?.trim() || undefined,
       }
 
-      const response = await apiRequest<Record<string, unknown>>('/api/customers', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      }, { tenant_id: tenantId })
+      const response = await createCustomerApi(tenantId, payload)
 
       const created = normalizeCustomer((response as Record<string, unknown>) ?? ({ ...payload } as Record<string, unknown>))
 
@@ -856,19 +814,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       return created
     } catch (error) {
       console.warn('Customer could not be created from the backend.', error)
-      const localCustomer: Customer = {
-        id: `cus-local-${Date.now()}`,
-        name: data.nombre.trim(),
-        phone: data.phoneNumber.trim(),
-        email: data.email?.trim() || 'cliente@agendabot.io',
-        avatar: data.nombre.trim().slice(0, 2).toUpperCase() || 'CN',
-      }
-
-      set((state) => ({
-        customers: [localCustomer, ...state.customers.filter((customer) => customer.phone !== localCustomer.phone)],
-      }))
-
-      return localCustomer
+      throw error instanceof Error ? error : new Error('No pudimos guardar el cliente.')
     }
   },
 
@@ -882,12 +828,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         horario_atencion: business.horario_atencion,
         google_calendar_id: business.google_calendar_id,
         prompt_custom_ia: business.prompt_custom_ia,
+        direccion: business.direccion ?? business.address,
+        referencias_direccion: business.referencias_direccion ?? business.locationReference,
       }
 
-      const response = await apiRequest<Record<string, unknown>>('/api/business', {
-        method: 'PUT',
-        body: JSON.stringify(payload),
-      }, { tenant_id: tenantId })
+      const response = await updateBusinessApi(tenantId, payload)
 
       const normalized = normalizeTenant(response ?? ({ ...payload, tenant_id: tenantId } as Record<string, unknown>))
       set((state) => ({
@@ -896,54 +841,62 @@ export const useAppStore = create<AppState>((set, get) => ({
       }))
     } catch (error) {
       console.warn('Business configuration could not be updated.', error)
+      throw error instanceof Error ? error : new Error('No pudimos guardar los cambios del negocio.')
     }
   },
 
   forgotPassword: async (email) => {
-    const response = await forgotPassword({ email })
+    const response = await forgotPasswordApi(email)
     return response.message
   },
 
   resetPassword: async ({ token, new_password }) => {
-    const response = await resetPassword({ token, new_password })
+    const response = await resetPasswordApi({ token, new_password })
     return response.message
   },
 
   changePassword: async ({ current_password, new_password }) => {
-    const response = await changePassword({ current_password, new_password })
+    const response = await changePasswordApi({ current_password, new_password })
     return response.message
   },
 
   listTeamMembers: async (tenantId) => {
-    const response = await listTeamMembers(tenantId)
-    return Array.isArray(response.members) ? response.members : []
+    const response = await getTeam(tenantId)
+    // El backend responde { members: [...] } (nodo "Responder Miembros Equipo" en el workflow
+    // de la API), no el arreglo directo. Antes se comprobaba Array.isArray(response), que
+    // siempre era false para ese objeto envuelto, así que la lista de "Miembros del negocio"
+    // quedaba vacía sin importar cuántos miembros existieran de verdad en la base de datos.
+    const members = unwrapCollection<unknown[]>(response)
+    return Array.isArray(members) ? members as Array<{ id: string; email: string; nombre: string; role: 'owner' | 'admin' | 'staff' }> : []
   },
 
   updateTeamMemberRole: async ({ tenant_id, user_id, role }) => {
-    const response = await updateTeamMemberRole({ tenant_id, user_id, role })
+    const response = await apiRequest<{ user_id: string; role: 'admin' | 'staff' }>('/api/team/members', {
+      method: 'PATCH',
+      body: JSON.stringify({ tenant_id, user_id, role }),
+    })
     return { user_id: response.user_id, role: response.role }
   },
 
   removeTeamMember: async ({ tenant_id, user_id }) => {
-    const response = await removeTeamMember({ tenant_id, user_id })
+    const response = await apiRequest<{ message: string }>('/api/team/members', {
+      method: 'DELETE',
+      body: JSON.stringify({ tenant_id, user_id }),
+    })
     return response.message
   },
 
   inviteTeamMember: async ({ nombre, email, password, role }) => {
     const tenantId = getActiveTenantId()
-    const response = await apiRequest<{ created: boolean; user?: Record<string, unknown>; role?: 'admin' | 'staff'; password?: string }>('/api/team/invite', {
-      method: 'POST',
-      body: JSON.stringify({
-        tenant_id: tenantId,
-        nombre,
-        email,
-        password,
-        role,
-      }),
-    }, { tenant_id: tenantId })
+    const response = await inviteMember(tenantId, { nombre, email, password, role }) as {
+      created?: boolean
+      user?: { id?: string; email?: string; nombre?: string }
+      role?: 'admin' | 'staff'
+      password?: string
+    }
 
     const createdUser = response.user ?? { id: 'team-user', email, nombre }
-    const responseRole = response.role ?? role
+    const responseRole: 'admin' | 'staff' = response.role ?? role
     const resolvedPassword = response.password ?? password
 
     return {
@@ -973,10 +926,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (patch.duration !== undefined) payload.duracion_minutos = patch.duration
       if (patch.activo !== undefined) payload.activo = patch.activo
 
-      const response = await apiRequest<Record<string, unknown>>('/api/services', {
-        method: 'PATCH',
-        body: JSON.stringify(payload),
-      }, { tenant_id: tenantId })
+      const response = await updateServiceApi(serviceId, tenantId, payload)
 
       const updated = normalizeService(response ?? { ...currentService, ...patch } as Record<string, unknown>, serviceId)
       set((state) => ({
@@ -984,44 +934,81 @@ export const useAppStore = create<AppState>((set, get) => ({
       }))
     } catch (error) {
       console.warn('The service could not be updated in the backend.', error)
+      throw error instanceof Error ? error : new Error('No pudimos actualizar el servicio.')
     }
   },
 
   cancelAppointment: async (appointmentId) => {
     try {
       const tenantId = getActiveTenantId()
-      const response = await apiRequest<Record<string, unknown>>('/api/appointments', {
-        method: 'PATCH',
-        body: JSON.stringify({
-          id: appointmentId,
-          tenant_id: tenantId,
-          estado: 'cancelled',
-        }),
-      }, { tenant_id: tenantId })
+      const response = await updateAppointmentApi({
+        id: appointmentId,
+        tenant_id: tenantId,
+        estado: 'cancelled',
+      })
 
-      if (response && response.cancelled === true) {
-        set((state) => ({
-          appointments: state.appointments.map((appointment) => appointment.id === appointmentId ? { ...appointment, status: 'cancelled' } : appointment),
-        }))
+      if (!response || response.cancelled !== true) {
+        throw new Error('No pudimos cancelar la cita. Intenta de nuevo.')
       }
+
+      set((state) => ({
+        appointments: state.appointments.map((appointment) => appointment.id === appointmentId ? { ...appointment, status: 'cancelled' } : appointment),
+      }))
     } catch (error) {
       console.warn('The appointment could not be cancelled in the backend.', error)
+      throw error instanceof Error ? error : new Error('No pudimos cancelar la cita.')
+    }
+  },
+
+  editAppointment: async (appointmentId, patch) => {
+    try {
+      const tenantId = getActiveTenantId()
+      const body: Record<string, unknown> = { id: appointmentId, tenant_id: tenantId }
+      if (patch.date !== undefined) body.date = patch.date
+      if (patch.time !== undefined) body.start_time = patch.time
+      if (patch.serviceId !== undefined) body.service_id = patch.serviceId
+      if (patch.amount !== undefined) body.precio = patch.amount
+
+      const response = await updateAppointmentApi(body) as (Record<string, unknown> | null | undefined)
+
+      if (response && typeof response === 'object' && 'rescheduled' in response && response.rescheduled !== true) {
+        const reason = String((response as Record<string, unknown>).reason ?? 'BOOKING_FAILED_RETRY')
+        const message = reason === 'DAY_CLOSED'
+          ? 'El negocio no atiende ese día'
+          : reason === 'NO_SLOTS_AVAILABLE'
+            ? 'No hay horarios libres ese día'
+            : reason === 'CALENDAR_NOT_CONNECTED'
+              ? 'Este negocio no tiene Google Calendar conectado'
+              : reason === 'CALENDAR_CONFLICT'
+                ? 'Ese horario ya no está disponible, elige otro'
+                : reason === 'SERVICE_NOT_FOUND'
+                  ? 'Este servicio no está disponible para esta sucursal'
+                  : reason === 'APPOINTMENT_NOT_FOUND'
+                    ? 'No encontramos esta cita. Actualiza la página e intenta de nuevo.'
+                    : 'Ocurrió un error, intenta de nuevo'
+
+        set({ lastAppointmentError: message })
+        throw new Error(message)
+      }
+
+      set({ lastAppointmentError: null })
+      await get().hydrateFromApi()
+    } catch (error) {
+      const message = error instanceof Error && error.message ? error.message : 'No pudimos actualizar la cita.'
+      set({ lastAppointmentError: message })
+      throw error instanceof Error ? error : new Error(message)
     }
   },
 
   addService: async (service) => {
     try {
       const tenantId = getActiveTenantId()
-      const normalized = await apiRequest<Record<string, unknown>>('/api/services', {
-        method: 'POST',
-        body: JSON.stringify({
-          tenant_id: tenantId,
-          nombre: service.name,
-          descripcion: service.description,
-          precio: service.price,
-          duracion_minutos: service.duration,
-        }),
-      }, { tenant_id: tenantId })
+      const normalized = await createServiceApi(tenantId, {
+        nombre: service.name,
+        descripcion: service.description,
+        precio: service.price,
+        duracion_minutos: service.duration,
+      })
 
       const created = normalizeService(normalized ?? { ...service } as Record<string, unknown>, service.id)
 
@@ -1029,8 +1016,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         services: [created, ...state.services.filter((item) => item.id !== created.id)],
       }))
     } catch (error) {
-      console.warn('The service could not be synced with the backend. Falling back to local state.', error)
-      set((state) => ({ services: [service, ...state.services] }))
+      console.warn('The service could not be synced with the backend.', error)
+      throw error instanceof Error ? error : new Error('No pudimos guardar el servicio.')
     }
   },
 
@@ -1041,16 +1028,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
 
       const tenantId = getActiveTenantId()
-      const response = await apiRequest<Record<string, unknown>>('/api/appointments', {
-        method: 'POST',
-        body: JSON.stringify({
-          tenant_id: tenantId,
-          customer_id: appointment.customerId,
-          service_id: appointment.serviceId,
-          date: appointment.date,
-          start_time: appointment.time,
-        }),
-      }, { tenant_id: tenantId })
+      const response = await createAppointmentApi({
+        tenant_id: tenantId,
+        customer_id: appointment.customerId,
+        service_id: appointment.serviceId,
+        date: appointment.date,
+        start_time: appointment.time,
+      })
 
       if (response && typeof response === 'object' && 'created' in response && response.created === false) {
         const reason = String(response.reason ?? 'BOOKING_FAILED_RETRY')
@@ -1092,9 +1076,43 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  addTenant: (tenant) => {
-    const current = get().tenants
-    set({ tenants: [tenant, ...current] })
+  addTenantFromServer: (tenant) => {
+    const normalized = normalizeTenant((tenant ?? {}) as Record<string, unknown>)
+
+    if (!normalized.id || normalized.id === 'tenant-demo') {
+      return
+    }
+
+    set((state) => {
+      const exists = state.tenants.some((item) => item.id === normalized.id)
+      // Un negocio recien creado se marca como pendiente de configurar; uno que ya existia
+      // (por ejemplo, refrescado por hydrateFromApi) conserva su estado tal cual.
+      const nextTenants = exists
+        ? state.tenants.map((item) => (item.id === normalized.id ? normalized : item))
+        : [{ ...normalized, needsSetup: true }, ...state.tenants]
+
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('agendabot_tenants', JSON.stringify(nextTenants))
+      }
+
+      return {
+        tenants: nextTenants,
+      }
+    })
+  },
+
+  clearTenantSetupFlag: (tenantId) => {
+    set((state) => {
+      const nextTenants = state.tenants.map((item) =>
+        item.id === tenantId ? { ...item, needsSetup: false } : item,
+      )
+
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('agendabot_tenants', JSON.stringify(nextTenants))
+      }
+
+      return { tenants: nextTenants }
+    })
   },
 }))
 
