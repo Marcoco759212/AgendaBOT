@@ -57,12 +57,6 @@ function Header() {
     <header className={isDark ? 'sticky top-0 z-20 border-b border-slate-700/80 bg-slate-950/80 backdrop-blur-xl' : 'sticky top-0 z-20 border-b border-slate-300 bg-white/80 backdrop-blur-xl'}>
       <div className="flex items-center justify-between gap-3 px-4 py-3 lg:px-6">
         <div className="flex items-center gap-3">
-          <div className="md:hidden">
-            <button className={isDark ? 'flex h-10 w-10 items-center justify-center rounded-xl border border-slate-600 bg-slate-900 text-slate-100' : 'flex h-10 w-10 items-center justify-center rounded-xl border border-slate-300 bg-slate-50 text-slate-700'}>
-              ☰
-            </button>
-          </div>
-
           <div className="relative">
             <label className={isDark ? 'mb-1 pl-3 block text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400' : 'mb-1 pl-3 block text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500'}>Tenant</label>
             <div className={isDark ? 'relative rounded-2xl border border-slate-600 bg-gradient-to-r from-slate-900 via-slate-900 to-slate-800 shadow-[0_10px_25px_rgba(15,23,42,0.22)]' : 'relative rounded-2xl border border-slate-200 bg-gradient-to-r from-white via-slate-50 to-emerald-50 shadow-[0_12px_26px_rgba(15,23,42,0.06)]'}>

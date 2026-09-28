@@ -23,7 +23,7 @@ describe('auth.api', () => {
 
   it('register hace POST a /api/auth/register con el payload completo', async () => {
     const fetchMock = mockFetchOnce({ json: { token: 'jwt-456' } })
-    const payload = { email: 'nuevo@negocio.com', password: 'secreto123', nombre_negocio: 'Mi negocio', nombre_usuario: 'Ana' }
+    const payload = { email: 'nuevo@negocio.com', password: 'secreto123', nombre_negocio: 'Mi negocio', nombre_usuario: 'Ana', acepta_terminos: true }
 
     await register(payload)
 
