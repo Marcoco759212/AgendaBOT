@@ -1,7 +1,7 @@
 import { Eye, EyeOff } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAppStore } from '../../../store/useAppStore'
 
 export default function AuthScreen({ mode = 'login' }: { mode?: 'login' | 'register' }) {
@@ -15,6 +15,7 @@ export default function AuthScreen({ mode = 'login' }: { mode?: 'login' | 'regis
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [acceptedTerms, setAcceptedTerms] = useState(false)
 
   useEffect(() => {
     void restoreSession()
@@ -29,6 +30,12 @@ export default function AuthScreen({ mode = 'login' }: { mode?: 'login' | 'regis
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setError('')
+
+    if (mode === 'register' && !acceptedTerms) {
+      setError('Debes aceptar los Términos y Condiciones y la Política de Privacidad para crear tu cuenta.')
+      return
+    }
+
     setIsSubmitting(true)
 
     try {
@@ -40,6 +47,7 @@ export default function AuthScreen({ mode = 'login' }: { mode?: 'login' | 'regis
           password,
           nombre_negocio: nombreNegocio.trim(),
           nombre_usuario: nombreUsuario.trim(),
+          acepta_terminos: acceptedTerms,
         })
       }
       navigate('/dashboard', { replace: true })
@@ -158,13 +166,36 @@ export default function AuthScreen({ mode = 'login' }: { mode?: 'login' | 'regis
                   </div>
                 </div>
 
+                {mode === 'register' && (
+                  <label className={isDark ? 'flex items-start gap-2.5 text-sm text-slate-300' : 'flex items-start gap-2.5 text-sm text-slate-600'}>
+                    <input
+                      type="checkbox"
+                      checked={acceptedTerms}
+                      onChange={(event) => setAcceptedTerms(event.target.checked)}
+                      required
+                      className={isDark ? 'mt-0.5 h-4 w-4 shrink-0 rounded border-slate-600 bg-slate-900 text-emerald-500 focus:ring-emerald-500' : 'mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500'}
+                    />
+                    <span>
+                      He leído y acepto los{' '}
+                      <Link to="/terminos" target="_blank" rel="noreferrer" className={isDark ? 'font-medium text-emerald-400 underline-offset-4 hover:underline' : 'font-medium text-emerald-600 underline-offset-4 hover:underline'}>
+                        Términos y Condiciones
+                      </Link>{' '}
+                      y la{' '}
+                      <Link to="/privacidad" target="_blank" rel="noreferrer" className={isDark ? 'font-medium text-emerald-400 underline-offset-4 hover:underline' : 'font-medium text-emerald-600 underline-offset-4 hover:underline'}>
+                        Política de Privacidad
+                      </Link>
+                      .
+                    </span>
+                  </label>
+                )}
+
                 {error && (
                   <div className={isDark ? 'rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200' : 'rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700'}>
                     {error}
                   </div>
                 )}
 
-                <button type="submit" disabled={isSubmitting} className={isDark ? 'w-full rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60' : 'w-full rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-60'}>
+                <button type="submit" disabled={isSubmitting || (mode === 'register' && !acceptedTerms)} className={isDark ? 'w-full rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60' : 'w-full rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-60'}>
                   {isSubmitting ? 'Procesando…' : mode === 'login' ? 'Entrar al panel' : 'Crear negocio'}
                 </button>
               </form>

@@ -79,7 +79,6 @@ function AppShell() {
   const { activeView, activeTenantId, tenants, setActiveView, setStatusFilter, statusFilter, theme, quickCreateType, setQuickCreateType, hydrateFromApi, appointments, setSelectedAppointmentId, analyticsKpis, dailyBookings, hourlyDemand, serviceMix, recentActivity, loadAnalytics, loadRecentActivity, user, dashboardError, setDashboardError } = useAppStore()
   const navigate = useNavigate()
   const location = useLocation()
-  const [showMobileMenu, setShowMobileMenu] = useState(false)
   const isDark = theme === 'dark'
   const activeTenantRole = String((tenants.find((tenant) => tenant.id === activeTenantId)?.role ?? 'staff') || 'staff').toLowerCase()
   const canViewAnalytics = activeTenantRole === 'owner' || activeTenantRole === 'admin'
@@ -479,15 +478,12 @@ function AppShell() {
         </div>
 
         <nav className={isDark ? 'fixed inset-x-0 bottom-0 z-30 border-t border-slate-700 bg-slate-950/90 p-2 backdrop-blur-xl lg:hidden' : 'fixed inset-x-0 bottom-0 z-30 border-t border-slate-300 bg-white/90 p-2 backdrop-blur-xl lg:hidden'}>
-          <div className="grid grid-cols-4 gap-2">
+          <div className="flex gap-2 overflow-x-auto snap-x snap-mandatory [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {visibleMobileNavItems.map(({ key, label, icon: Icon }) => (
               <button
                 key={key}
-                onClick={() => {
-                  setShowMobileMenu(false)
-                  handleNavigate(key)
-                }}
-                className={`flex flex-col items-center gap-1 rounded-xl px-2 py-2 text-[11px] ${
+                onClick={() => handleNavigate(key)}
+                className={`flex min-w-[64px] shrink-0 snap-start flex-col items-center gap-1 rounded-xl px-3 py-2 text-[11px] ${
                   activeView === key ? isDark ? 'bg-emerald-500/10 text-emerald-200' : 'bg-emerald-500/10 text-emerald-700' : isDark ? 'text-slate-300' : 'text-slate-600'
                 }`}
               >
@@ -498,28 +494,6 @@ function AppShell() {
           </div>
         </nav>
 
-        {showMobileMenu && (
-          <div className={isDark ? 'fixed inset-0 z-40 bg-slate-950/70 p-4 backdrop-blur-sm lg:hidden' : 'fixed inset-0 z-40 bg-slate-900/20 p-4 backdrop-blur-sm lg:hidden'}>
-            <div className={isDark ? 'mt-20 rounded-2xl border border-slate-700 bg-slate-900 p-4' : 'mt-20 rounded-2xl border border-slate-300 bg-white p-4 shadow-xl'}>
-              <button onClick={() => setShowMobileMenu(false)} className={isDark ? 'mb-3 text-sm text-slate-300' : 'mb-3 text-sm text-slate-600'}>Cerrar</button>
-              <div className="space-y-2">
-                {visibleMobileNavItems.map(({ key, label, icon: Icon }) => (
-                  <button
-                    key={key}
-                    onClick={() => {
-                      setShowMobileMenu(false)
-                      handleNavigate(key)
-                    }}
-                    className={isDark ? 'flex w-full items-center gap-3 rounded-xl border border-slate-700 bg-slate-950/60 p-3 text-left text-sm text-slate-200' : 'flex w-full items-center gap-3 rounded-xl border border-slate-300 bg-slate-50 p-3 text-left text-sm text-slate-700'}
-                  >
-                    <Icon className="h-4 w-4 text-emerald-300" />
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
 
         <AppointmentModal />
         {quickCreateType && (

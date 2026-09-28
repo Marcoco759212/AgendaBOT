@@ -77,7 +77,7 @@ interface AppState {
   setActiveTenant: (tenantId: string) => void
   restoreSession: () => Promise<void>
   login: (email: string, password: string) => Promise<Tenant[]>
-  register: (payload: { email: string; password: string; nombre_negocio: string; nombre_usuario: string; timezone?: string }) => Promise<Tenant[]>
+  register: (payload: { email: string; password: string; nombre_negocio: string; nombre_usuario: string; timezone?: string; acepta_terminos: boolean }) => Promise<Tenant[]>
   logout: () => void
   setActiveView: (view: ViewName) => void
   setTheme: (theme: 'dark' | 'light') => void
@@ -400,6 +400,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       nombre_negocio: payload.nombre_negocio,
       nombre_usuario: payload.nombre_usuario,
       timezone: payload.timezone ?? 'America/Mexico_City',
+      acepta_terminos: payload.acepta_terminos,
     })
 
     const token = response.token

@@ -19,7 +19,7 @@ export async function login(email: string, password: string) {
   })
 }
 
-export async function register(payload: { email: string; password: string; nombre_negocio: string; nombre_usuario: string; timezone?: string }) {
+export async function register(payload: { email: string; password: string; nombre_negocio: string; nombre_usuario: string; timezone?: string; acepta_terminos: boolean }) {
   return apiRequest<AuthRegisterResponse>('/api/auth/register', {
     method: 'POST',
     body: JSON.stringify(payload),
