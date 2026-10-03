@@ -1,4 +1,4 @@
-import { Bell, ChevronDown, MoonStar, Plus, Sparkles, SunMedium } from 'lucide-react'
+import { ChevronDown, MoonStar, Plus, Sparkles, SunMedium } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiRequest } from '../lib/api'
@@ -58,7 +58,6 @@ function Header() {
       <div className="flex items-center justify-between gap-3 px-4 py-3 lg:px-6">
         <div className="flex items-center gap-3">
           <div className="relative">
-            <label className={isDark ? 'mb-1 pl-3 block text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400' : 'mb-1 pl-3 block text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500'}>Tenant</label>
             <div className={isDark ? 'relative rounded-2xl border border-slate-600 bg-gradient-to-r from-slate-900 via-slate-900 to-slate-800 shadow-[0_10px_25px_rgba(15,23,42,0.22)]' : 'relative rounded-2xl border border-slate-200 bg-gradient-to-r from-white via-slate-50 to-emerald-50 shadow-[0_12px_26px_rgba(15,23,42,0.06)]'}>
               <button
                 type="button"
@@ -145,55 +144,63 @@ function Header() {
           >
             {theme === 'dark' ? <SunMedium className="h-4 w-4" /> : <MoonStar className="h-4 w-4" />}
           </button>
-          <button className={isDark ? 'flex h-10 w-10 items-center justify-center rounded-xl border border-slate-700 bg-slate-900 text-slate-100' : 'flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700'}>
-            <Bell className="h-4 w-4" />
-          </button>
+          {/* Notificaciones: oculto temporalmente, todavia no hay funcionalidad implementada detras de este boton */}
 
-          <div className={isDark ? 'flex items-center gap-3 rounded-xl border border-slate-600 bg-slate-900 px-3 py-2' : 'flex items-center gap-3 rounded-xl border border-slate-300 bg-slate-50 px-3 py-2'}>
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-emerald-400 to-violet-500 text-sm font-bold text-white">
+          {/* En movil solo queda visible el avatar (compacto); el nombre/rol y el boton "Salir" aparecen desde sm.
+              El avatar es clickeable en todos los tamanios para no perder la funcionalidad de cerrar sesion. */}
+          <div
+            ref={logoutConfirmRef}
+            className={isDark
+              ? 'relative flex items-center gap-2 rounded-xl border border-transparent px-1 py-1 sm:gap-3 sm:border-slate-600 sm:bg-slate-900 sm:px-3 sm:py-2'
+              : 'relative flex items-center gap-2 rounded-xl border border-transparent px-1 py-1 sm:gap-3 sm:border-slate-300 sm:bg-slate-50 sm:px-3 sm:py-2'}
+          >
+            <button
+              type="button"
+              onClick={() => setIsLogoutConfirmOpen((open) => !open)}
+              aria-label="Cuenta y cerrar sesión"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-400 to-violet-500 text-sm font-bold text-white"
+            >
               {initials}
-            </div>
+            </button>
             <div className="hidden text-left sm:block">
               <p className={isDark ? 'text-sm font-medium text-white' : 'text-sm font-medium text-slate-800'}>{user.name}</p>
               <p className={isDark ? 'text-[11px] text-slate-400' : 'text-[11px] text-slate-500'}>{user.role}</p>
             </div>
-            <div ref={logoutConfirmRef} className="relative">
-              <button
-                type="button"
-                onClick={() => setIsLogoutConfirmOpen((open) => !open)}
-                className={isDark ? 'ml-1 rounded-lg border border-slate-700 px-2.5 py-1.5 text-[10px] uppercase tracking-[0.18em] text-slate-300' : 'ml-1 rounded-lg border border-slate-300 px-2.5 py-1.5 text-[10px] uppercase tracking-[0.18em] text-slate-600'}
-              >
-                Salir
-              </button>
+            <button
+              type="button"
+              onClick={() => setIsLogoutConfirmOpen((open) => !open)}
+              className={isDark ? 'hidden rounded-lg border border-slate-700 px-2.5 py-1.5 text-[10px] uppercase tracking-[0.18em] text-slate-300 sm:ml-1 sm:inline-flex' : 'hidden rounded-lg border border-slate-300 px-2.5 py-1.5 text-[10px] uppercase tracking-[0.18em] text-slate-600 sm:ml-1 sm:inline-flex'}
+            >
+              Salir
+            </button>
 
-              {isLogoutConfirmOpen && (
-                <div
-                  role="tooltip"
-                  className={isDark
-                    ? 'absolute right-0 top-full z-30 mt-2 w-56 rounded-xl border border-slate-700 bg-slate-900 p-3 shadow-[0_18px_35px_rgba(2,6,23,0.55)]'
-                    : 'absolute right-0 top-full z-30 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-3 shadow-[0_18px_35px_rgba(15,23,42,0.12)]'}
-                >
-                  <div className={cn('absolute -top-1.5 right-4 h-3 w-3 rotate-45 border-l border-t', isDark ? 'border-slate-700 bg-slate-900' : 'border-slate-200 bg-white')} />
-                  <p className={isDark ? 'text-xs text-slate-200' : 'text-xs text-slate-700'}>¿Seguro que quieres cerrar sesión?</p>
-                  <div className="mt-3 flex justify-end gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setIsLogoutConfirmOpen(false)}
-                      className={isDark ? 'rounded-lg border border-slate-700 px-2.5 py-1.5 text-[10px] uppercase tracking-[0.18em] text-slate-200' : 'rounded-lg border border-slate-300 px-2.5 py-1.5 text-[10px] uppercase tracking-[0.18em] text-slate-700'}
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={logout}
-                      className="rounded-lg bg-rose-500 px-2.5 py-1.5 text-[10px] font-medium uppercase tracking-[0.18em] text-white"
-                    >
-                      Salir
-                    </button>
-                  </div>
+            {isLogoutConfirmOpen && (
+              <div
+                role="tooltip"
+                className={isDark
+                  ? 'absolute right-0 top-full z-30 mt-2 w-56 rounded-xl border border-slate-700 bg-slate-900 p-3 shadow-[0_18px_35px_rgba(2,6,23,0.55)]'
+                  : 'absolute right-0 top-full z-30 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-3 shadow-[0_18px_35px_rgba(15,23,42,0.12)]'}
+              >
+                <div className={cn('absolute -top-1.5 right-4 h-3 w-3 rotate-45 border-l border-t', isDark ? 'border-slate-700 bg-slate-900' : 'border-slate-200 bg-white')} />
+                <p className={isDark ? 'text-xs text-slate-200' : 'text-xs text-slate-700'}>¿Seguro que quieres cerrar sesión?</p>
+                <div className="mt-3 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsLogoutConfirmOpen(false)}
+                    className={isDark ? 'rounded-lg border border-slate-700 px-2.5 py-1.5 text-[10px] uppercase tracking-[0.18em] text-slate-200' : 'rounded-lg border border-slate-300 px-2.5 py-1.5 text-[10px] uppercase tracking-[0.18em] text-slate-700'}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={logout}
+                    className="rounded-lg bg-rose-500 px-2.5 py-1.5 text-[10px] font-medium uppercase tracking-[0.18em] text-white"
+                  >
+                    Salir
+                  </button>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

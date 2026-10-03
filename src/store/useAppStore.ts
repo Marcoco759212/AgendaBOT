@@ -189,14 +189,35 @@ const normalizeAppointmentStatus = (raw: unknown): AppointmentStatus => {
   return 'pending'
 }
 
-const normalizeAppointment = (item: Record<string, unknown>, fallbackId = `apt-${Date.now()}`): Appointment => {
-  const rawCustomer = (item.customer ?? item.cliente ?? item.client ?? {}) as Record<string, unknown>
-  const rawDate = item.fecha_inicio ?? item.start_at ?? item.date ?? item.start_date ?? '2026-09-10'
-  const rawTime = item.start_time ?? item.time ?? item.hora ?? '10:00'
+const ISO_DATETIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/
+const hasTimezoneInfo = (value: string) => /Z$|[+-]\d{2}:?\d{2}$/.test(value)
 
-  const parsedDate = new Date(String(rawDate))
-  const dateValue = Number.isNaN(parsedDate.getTime()) ? String(rawDate).slice(0, 10) : parsedDate.toISOString().slice(0, 10)
-  const timeValue = String(rawTime).slice(0, 5)
+const normalizeAppointment = (item: Record<string, unknown>, fallbackId = `apt-${Date.now()}`, timezone = 'America/Mexico_City'): Appointment => {
+  const rawCustomer = (item.customer ?? item.cliente ?? item.client ?? {}) as Record<string, unknown>
+  const rawDate = String(item.fecha_inicio ?? item.start_at ?? item.date ?? item.start_date ?? '2026-09-10')
+  const rawTime = item.start_time ?? item.time ?? item.hora
+
+  // El backend manda fecha_inicio como timestamptz en UTC (ej. "2026-10-02T21:00:00.000Z" para
+  // una cita de las 3pm hora del negocio). Antes se tomaba la hora de un campo start_time/time/
+  // hora que el backend nunca manda, asi que siempre caia en el default "10:00" sin importar la
+  // hora real agendada. Ahora se formatea fecha_inicio explicitamente en la zona horaria del
+  // negocio, para mostrar el dia y la hora que el cliente realmente reservo.
+  let dateValue: string
+  let timeValue: string
+
+  if (ISO_DATETIME_RE.test(rawDate) && hasTimezoneInfo(rawDate)) {
+    const parsedDate = new Date(rawDate)
+    dateValue = new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(parsedDate)
+    timeValue = new Intl.DateTimeFormat('en-GB', { timeZone: timezone, hour: '2-digit', minute: '2-digit', hour12: false }).format(parsedDate)
+  } else if (ISO_DATETIME_RE.test(rawDate)) {
+    // Fecha/hora local ya resuelta sin informacion de zona (ej. el item optimista que arma
+    // createAppointment al agendar desde el panel): se usa tal cual, sin reinterpretarla.
+    dateValue = rawDate.slice(0, 10)
+    timeValue = rawTime !== undefined && rawTime !== null ? String(rawTime).slice(0, 5) : rawDate.slice(11, 16)
+  } else {
+    dateValue = rawDate.slice(0, 10)
+    timeValue = rawTime !== undefined && rawTime !== null ? String(rawTime).slice(0, 5) : '10:00'
+  }
 
   return {
     id: String(item.id ?? item.appointment_id ?? item.uuid ?? fallbackId),
@@ -525,9 +546,17 @@ export const useAppStore = create<AppState>((set, get) => ({
       const business = unwrapCollection<Record<string, unknown>>(businessResponse)
       const customers = unwrapCollection<unknown[]>(customersResponse)
 
+      // Se necesita la zona horaria del negocio ANTES de normalizar las citas: fecha_inicio llega
+      // en UTC desde el backend y hay que convertirla al horario local del negocio para mostrar
+      // el dia/hora correctos (ver normalizeAppointment).
+      const businessTimezone =
+        business && typeof business === 'object' && typeof (business as Record<string, unknown>).timezone === 'string'
+          ? ((business as Record<string, unknown>).timezone as string)
+          : 'America/Mexico_City'
+
       set({
         services: Array.isArray(services) ? services.map((item, index) => normalizeService((item as unknown as Record<string, unknown>) ?? {}, `svc-${index + 1}`)) : [],
-        appointments: Array.isArray(appointments) ? appointments.map((item, index) => normalizeAppointment((item as unknown as Record<string, unknown>) ?? {}, `apt-${index + 1}`)) : [],
+        appointments: Array.isArray(appointments) ? appointments.map((item, index) => normalizeAppointment((item as unknown as Record<string, unknown>) ?? {}, `apt-${index + 1}`, businessTimezone)) : [],
         customers: Array.isArray(customers) ? customers.map((item) => normalizeCustomer((item as unknown as Record<string, unknown>) ?? {})) : [],
         // Se limpia el detalle de cliente seleccionado: ahora que este metodo tambien corre al
         // cambiar de negocio (no solo al montar), si habia un cliente abierto de otro tenant
@@ -763,10 +792,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  loadAvailability: async (_serviceId: string, _date: string) => {
+  loadAvailability: async (serviceId: string, date: string) => {
     try {
       const tenantId = getActiveTenantId()
-      const response = await getAvailability(tenantId)
+      // serviceId y date se ignoraban antes: siempre se llamaba a getAvailability(tenantId) sin
+      // ellos, lo que hacia que el backend (TOOL - Check Availability) tronara por falta de
+      // service_id/date y el panel mostrara "No pudimos cargar la disponibilidad" para cualquier
+      // fecha.
+      const response = await getAvailability(tenantId, serviceId, date)
       const rawSlots = Array.isArray(response?.slots) ? response.slots : Array.isArray(response?.items) ? response.items : []
       const available = typeof response?.available === 'boolean' ? response.available : rawSlots.length > 0
       const reason = typeof response?.reason === 'string' ? response.reason : null
