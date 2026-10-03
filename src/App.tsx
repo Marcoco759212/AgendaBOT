@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { BarChart3, CalendarDays, ChevronLeft, ChevronRight, CreditCard, Plus, Settings2, Sparkles, ShieldCheck } from 'lucide-react'
+import { BarChart3, CalendarDays, ChevronLeft, ChevronRight, Plus, Settings2, Sparkles, ShieldCheck } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import AnalyticsCharts from './features/dashboard/components/AnalyticsCharts'
@@ -33,7 +33,7 @@ const mobileNavItems: { key: ViewName; label: string; icon: typeof BarChart3 }[]
   { key: 'dashboard', label: 'Dashboard', icon: BarChart3 },
   { key: 'calendar', label: 'Agenda', icon: CalendarDays },
   { key: 'services', label: 'Servicios', icon: Sparkles },
-  { key: 'billing', label: 'Billing', icon: CreditCard },
+  // { key: 'billing', label: 'Billing', icon: CreditCard }, // Oculto: igual que en el Sidebar de escritorio, Billing aun no esta listo para mostrarse
   { key: 'account', label: 'Cuenta', icon: ShieldCheck },
   { key: 'settings', label: 'Negocio', icon: Settings2 },
   { key: 'team', label: 'Equipo', icon: Sparkles },
