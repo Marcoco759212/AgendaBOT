@@ -15,28 +15,28 @@ const plans = [
   {
     id: 'starter',
     name: 'Starter',
-    monthly: 29,
-    annual: 24,
+    monthly: 399,
+    annual: 329,
     description: 'Ideal para negocios en crecimiento.',
     featured: false,
     features: ['1 sucursal', 'WhatsApp + IA', 'Calendario básico', 'Recordatorios automáticos'],
-    limits: { conversations: 1000, branches: 1, calendars: 1 },
+    limits: { conversations: 500, branches: 1, calendars: 1 },
   },
   {
     id: 'pro',
     name: 'Pro',
-    monthly: 59,
-    annual: 47,
+    monthly: 799,
+    annual: 649,
     description: 'Para equipos con mayor volumen de citas.',
     featured: true,
     features: ['3 sucursales', 'IA multi-canal', 'Integración Google Calendar', 'Reportes avanzados'],
-    limits: { conversations: 1000, branches: 3, calendars: 2 },
+    limits: { conversations: 1500, branches: 3, calendars: 2 },
   },
   {
     id: 'business',
     name: 'Business',
-    monthly: 119,
-    annual: 95,
+    monthly: 1499,
+    annual: 1249,
     description: 'Para cadenas y franquicias.',
     featured: false,
     features: ['Sucursales ilimitadas', 'IA personalizada', 'Soporte prioritario', 'Analytics ejecutivo'],
@@ -288,7 +288,7 @@ function LandingPage() {
 
                     <div className="mt-5 flex items-end gap-2">
                       <span className={isDark ? 'text-4xl font-bold text-white' : 'text-4xl font-bold text-slate-900'}>${price}</span>
-                      <span className={isDark ? 'pb-1 text-sm text-slate-400' : 'pb-1 text-sm text-slate-500'}>/mes</span>
+                      <span className={isDark ? 'pb-1 text-sm text-slate-400' : 'pb-1 text-sm text-slate-500'}>/mes MXN</span>
                     </div>
 
                     <ul className="mt-6 space-y-3">
