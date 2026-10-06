@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion'
-import { BarChart3, CalendarDays, ChevronLeft, ChevronRight, Plus, Settings2, Sparkles, ShieldCheck } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { BarChart3, CalendarDays, ChevronLeft, ChevronRight, Plus, RefreshCw, Settings2, Sparkles, ShieldCheck } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import AnalyticsCharts from './features/dashboard/components/AnalyticsCharts'
 import KpiCard from './features/dashboard/components/KpiCard'
@@ -75,6 +75,8 @@ const buildMonthGrid = (cursor: Date) => {
   })
 }
 
+const AUTO_REFRESH_MIN_MS = 20_000
+
 function AppShell() {
   const { activeView, activeTenantId, tenants, setActiveView, setStatusFilter, statusFilter, theme, quickCreateType, setQuickCreateType, hydrateFromApi, appointments, setSelectedAppointmentId, analyticsKpis, dailyBookings, hourlyDemand, serviceMix, recentActivity, loadAnalytics, loadRecentActivity, user, dashboardError, setDashboardError } = useAppStore()
   const navigate = useNavigate()
@@ -88,13 +90,54 @@ function AppShell() {
     return true
   })
 
+  const lastHydrateRef = useRef(Date.now())
+  const refreshInFlightRef = useRef(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+
   useEffect(() => {
     // Se agrega activeTenantId a las dependencias: antes esto solo corria una vez al montar
     // AppShell, asi que si cambiabas de negocio sin navegar a otra pagina (el switcher del
     // Header, o "Seleccionar" en Mis negocios), servicios/citas/clientes se quedaban con los
     // datos del negocio anterior hasta la siguiente navegacion.
+    lastHydrateRef.current = Date.now()
     void hydrateFromApi()
   }, [hydrateFromApi, activeTenantId])
+
+  // Refresco en segundo plano: las citas tambien cambian fuera del panel (WhatsApp, Google
+  // Calendar, otro dispositivo) y antes solo se recargaban al montar o cambiar de negocio, asi
+  // que cambiar de menu seguia mostrando datos viejos. Ahora se vuelve a pedir al volver a la
+  // pestana, al navegar entre vistas, cada 60 s con la pestana visible y con el boton Actualizar.
+  const refreshData = useCallback(async (force = false) => {
+    if (refreshInFlightRef.current) return
+    if (!force && Date.now() - lastHydrateRef.current < AUTO_REFRESH_MIN_MS) return
+    refreshInFlightRef.current = true
+    setIsRefreshing(true)
+    try {
+      await hydrateFromApi({ silent: true })
+      lastHydrateRef.current = Date.now()
+    } finally {
+      refreshInFlightRef.current = false
+      setIsRefreshing(false)
+    }
+  }, [hydrateFromApi])
+
+  useEffect(() => {
+    void refreshData()
+  }, [location.pathname, refreshData])
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void refreshData()
+    }
+    window.addEventListener('focus', onVisible)
+    document.addEventListener('visibilitychange', onVisible)
+    const interval = window.setInterval(onVisible, 60_000)
+    return () => {
+      window.removeEventListener('focus', onVisible)
+      document.removeEventListener('visibilitychange', onVisible)
+      window.clearInterval(interval)
+    }
+  }, [refreshData])
 
   useEffect(() => {
     if (location.pathname === '/dashboard') {
@@ -192,6 +235,17 @@ function AppShell() {
                   <h1 className={isDark ? 'mt-2 text-2xl font-semibold text-white md:text-3xl' : 'mt-2 text-2xl font-semibold text-slate-900 md:text-3xl'}>Centro de control AI + agendamiento</h1>
                 </div>
 
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => void refreshData(true)}
+                    disabled={isRefreshing}
+                    aria-label="Actualizar datos"
+                    title="Actualizar datos"
+                    className={isDark ? 'inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-slate-900/70 text-slate-200 transition hover:bg-slate-800 disabled:opacity-60' : 'inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-50 disabled:opacity-60'}
+                  >
+                    <RefreshCw className={isRefreshing ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
+                  </button>
                 <motion.div whileHover={{ scale: 1.01 }} className="relative rounded-2xl p-[1px] bg-gradient-to-r from-emerald-500 via-violet-500 to-violet-700">
                   <Button
                     className={isDark ? 'h-12 rounded-2xl border-0 bg-slate-950/90 px-5 text-sm font-medium text-white shadow-[0_0_25px_rgba(16,185,129,0.2)]' : 'h-12 rounded-2xl border-0 bg-white px-5 text-sm font-medium text-slate-900 shadow-[0_0_25px_rgba(16,185,129,0.12)]'}
@@ -201,6 +255,7 @@ function AppShell() {
                     Nueva cita
                   </Button>
                 </motion.div>
+                </div>
               </div>
 
               {dashboardError && (

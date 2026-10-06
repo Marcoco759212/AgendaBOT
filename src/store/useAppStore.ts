@@ -89,7 +89,7 @@ interface AppState {
   setBillingModalOpen: (open: boolean) => void
   setQuickCreateType: (type: 'appointment' | 'service' | 'branch' | null) => void
   updateUsageMetric: (id: UsageMetric['id'], used: number, limit: number) => void
-  hydrateFromApi: () => Promise<void>
+  hydrateFromApi: (options?: { silent?: boolean }) => Promise<void>
   loadCustomers: () => Promise<void>
   loadCustomerDetail: (customerId: string) => Promise<void>
   loadAnalytics: (range?: '7d' | '30d' | '90d') => Promise<void>
@@ -531,7 +531,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     }))
   },
 
-  hydrateFromApi: async () => {
+  hydrateFromApi: async (options) => {
+    // silent = refresco en segundo plano (foco de ventana, cambio de vista, intervalo, boton
+    // Actualizar): no borra el detalle de cliente abierto y, si falla la red, conserva los datos
+    // que ya se muestran en vez de vaciar el panel y mostrar un error.
+    const silent = options?.silent === true
     try {
       const tenantId = getActiveTenantId()
       const [servicesResponse, appointmentsResponse, businessResponse, customersResponse] = await Promise.all([
@@ -545,6 +549,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       const appointments = unwrapCollection<unknown[]>(appointmentsResponse)
       const business = unwrapCollection<Record<string, unknown>>(businessResponse)
       const customers = unwrapCollection<unknown[]>(customersResponse)
+
+      // Si el usuario cambio de negocio mientras esta peticion estaba en vuelo, estos datos
+      // son del negocio anterior: se descartan (el efecto de cambio de tenant ya lanzo otra).
+      if (getActiveTenantId() !== tenantId) return
 
       // Se necesita la zona horaria del negocio ANTES de normalizar las citas: fecha_inicio llega
       // en UTC desde el backend y hay que convertirla al horario local del negocio para mostrar
@@ -561,7 +569,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         // Se limpia el detalle de cliente seleccionado: ahora que este metodo tambien corre al
         // cambiar de negocio (no solo al montar), si habia un cliente abierto de otro tenant
         // se quedaba mostrado hasta que el usuario eligiera uno nuevo manualmente.
-        customerDetail: null,
+        ...(silent ? {} : { customerDetail: null }),
         isHydrated: true,
         dashboardError: null,
       })
@@ -582,6 +590,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         })
       }
     } catch (error) {
+      if (silent) {
+        console.warn('Background refresh failed; keeping the data already loaded.', error)
+        return
+      }
       console.warn('API hydration failed; the store remains empty until the backend is available.', error)
       set({ services: [], appointments: [], customers: [], isHydrated: true, dashboardError: 'No pudimos cargar la informacion de tu negocio. Verifica tu conexion e intenta de nuevo.' })
     }
@@ -982,7 +994,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       })
 
       if (!response || response.cancelled !== true) {
-        throw new Error('No pudimos cancelar la cita. Intenta de nuevo.')
+        // CALENDAR_ERROR: Google Calendar rechazo el borrado del evento (permiso, token o red);
+        // el backend ya no marca la cita como cancelada en ese caso, para no dejarla desfasada.
+        const reason = response && typeof response === 'object' ? String((response as unknown as Record<string, unknown>).reason ?? '') : ''
+        throw new Error(
+          reason === 'CALENDAR_ERROR'
+            ? 'No pudimos borrar el evento en Google Calendar, por eso la cita sigue activa. Intenta de nuevo.'
+            : 'No pudimos cancelar la cita. Intenta de nuevo.',
+        )
       }
 
       set((state) => ({
