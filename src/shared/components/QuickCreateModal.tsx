@@ -1,9 +1,34 @@
-import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
+import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { createBusiness } from '../../api/business.api'
 import { Button } from './button'
 import { Modal } from './modal'
 import { useAppStore } from '../../store/useAppStore'
+
+const DEFAULT_TIMEZONE = 'America/Mexico_City'
+
+// Fecha (YYYY-MM-DD) de "ahora" en la zona horaria del negocio. No se usa toISOString() porque
+// devuelve la fecha en UTC: en Mexico, despues de las 18:00 ya seria "mañana" y "Hoy" saldria un dia adelantado.
+const todayInTimezone = (timeZone: string) => {
+  const format = (zone: string) =>
+    new Intl.DateTimeFormat('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
+
+  try {
+    return format(timeZone)
+  } catch {
+    return format(DEFAULT_TIMEZONE)
+  }
+}
+
+// Suma dias a una fecha YYYY-MM-DD con aritmetica de calendario (sin horas, sin horario de verano).
+const addDaysToDateString = (dateString: string, days: number) => {
+  const [year, month, day] = dateString.split('-').map(Number)
+  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10)
+}
+
+// YYYY-MM-DD a partir de los componentes locales de un Date (las celdas del calendario son fechas locales).
+const toLocalDateString = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 
 interface QuickCreateModalProps {
   type: 'appointment' | 'service' | 'branch'
@@ -23,8 +48,11 @@ function QuickCreateModal({ type, open, onClose }: QuickCreateModalProps) {
     loadAvailability,
     availability,
     availabilityMessage,
+    availabilityLoading,
     lastAppointmentError,
     theme,
+    tenants,
+    activeTenantId,
   } = useAppStore()
   const isDark = theme === 'dark'
   const [form, setForm] = useState({
@@ -74,6 +102,12 @@ function QuickCreateModal({ type, open, onClose }: QuickCreateModalProps) {
   )
 
   const timeSlots = useMemo(() => {
+    // Con servicio y fecha elegidos solo se muestran los horarios reales que devolvio el backend
+    // (nunca horarios de relleno): si no hay ninguno, se explica el motivo con availabilityMessage.
+    if (form.serviceId && form.date) {
+      return availability.filter((slot) => slot.available).map((slot) => slot.start)
+    }
+
     if (availability.length > 0) {
       return availability.filter((slot) => slot.available).map((slot) => slot.start)
     }
@@ -100,18 +134,25 @@ function QuickCreateModal({ type, open, onClose }: QuickCreateModalProps) {
     }
 
     return slots
-  }, [availability, selectedService])
+  }, [availability, selectedService, form.serviceId, form.date])
 
-  const quickDateOptions = useMemo(() => {
-    const today = new Date()
-    const format = (date: Date) => date.toISOString().slice(0, 10)
+  // Si el horario elegido ya no existe en la lista recien cargada (cambio de fecha o servicio), se limpia.
+  useEffect(() => {
+    if (availabilityLoading) return
+    setForm((current) => (current.time && !timeSlots.includes(current.time) ? { ...current, time: '' } : current))
+  }, [timeSlots, availabilityLoading])
 
-    return [
-      { label: 'Hoy', value: format(today) },
-      { label: 'Mañana', value: format(new Date(today.getTime() + 86400000)) },
-      { label: 'En 3 días', value: format(new Date(today.getTime() + 3 * 86400000)) },
-    ]
-  }, [])
+  const businessTimezone = tenants.find((tenant) => tenant.id === activeTenantId)?.timezone || DEFAULT_TIMEZONE
+  const businessToday = todayInTimezone(businessTimezone)
+
+  const quickDateOptions = useMemo(
+    () => [
+      { label: 'Hoy', value: businessToday },
+      { label: 'Mañana', value: addDaysToDateString(businessToday, 1) },
+      { label: 'En 3 días', value: addDaysToDateString(businessToday, 3) },
+    ],
+    [businessToday],
+  )
 
   const monthLabel = useMemo(
     () => new Intl.DateTimeFormat('es-MX', { month: 'long', year: 'numeric' }).format(calendarMonth),
@@ -157,7 +198,7 @@ function QuickCreateModal({ type, open, onClose }: QuickCreateModalProps) {
         customer: selectedCustomer,
         service: selectedService.name,
         date: form.date || '2026-09-10',
-        time: form.time || '10:00',
+        time: form.time || timeSlots[0] || '10:00',
         status: 'pending',
         channel: 'WhatsApp',
         notes: [form.notes || 'Creada desde modal de creación rápida.'],
@@ -435,10 +476,10 @@ function QuickCreateModal({ type, open, onClose }: QuickCreateModalProps) {
 
                     <div className="grid grid-cols-7 gap-1">
                       {calendarDays.map((day) => {
-                        const value = day.toISOString().slice(0, 10)
+                        const value = toLocalDateString(day)
                         const isCurrentMonth = day.getMonth() === calendarMonth.getMonth()
                         const isSelected = form.date === value
-                        const isPast = day < new Date(new Date().toDateString())
+                        const isPast = value < businessToday
 
                         return (
                           <button
@@ -495,11 +536,32 @@ function QuickCreateModal({ type, open, onClose }: QuickCreateModalProps) {
               </div>
             </div>
 
-            <div className={isDark ? 'space-y-3 rounded-2xl border border-slate-800 bg-slate-950/50 p-3' : 'space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3'}>
+            <div
+              aria-busy={availabilityLoading}
+              className={`relative space-y-3 rounded-2xl border p-3 transition ${isDark ? 'border-slate-800 bg-slate-950/50' : 'border-slate-200 bg-slate-50'} ${availabilityLoading ? 'pointer-events-none select-none' : ''}`}
+            >
               <div className="flex items-center justify-between">
                 <label className={isDark ? 'block text-xs uppercase tracking-[0.2em] text-slate-400' : 'block text-xs uppercase tracking-[0.2em] text-slate-500'}>Horario</label>
-                <span className={isDark ? 'text-[10px] uppercase tracking-[0.18em] text-violet-300' : 'text-[10px] uppercase tracking-[0.18em] text-violet-600'}>Disponibilidad</span>
+                <span className={isDark ? 'inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.18em] text-violet-300' : 'inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.18em] text-violet-600'}>
+                  {availabilityLoading && <Loader2 className="h-3 w-3 animate-spin" />}
+                  {availabilityLoading ? 'Consultando…' : 'Disponibilidad'}
+                </span>
               </div>
+
+              {availabilityLoading ? (
+                <div role="status" aria-live="polite" className="space-y-3">
+                  <div className={isDark ? 'flex items-center gap-2 rounded-xl border border-violet-500/25 bg-violet-500/10 px-3 py-2 text-xs text-violet-200' : 'flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700'}>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Consultando horarios disponibles…
+                  </div>
+                  <div className="flex flex-wrap gap-2" aria-hidden="true">
+                    {Array.from({ length: 8 }).map((_, index) => (
+                      <span key={index} className={isDark ? 'h-8 w-16 animate-pulse rounded-full bg-slate-800' : 'h-8 w-16 animate-pulse rounded-full bg-slate-200'} />
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <>
 
               {availabilityMessage && (
                 <div className={isDark ? 'rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-100' : 'rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700'}>{availabilityMessage}</div>
@@ -529,6 +591,8 @@ function QuickCreateModal({ type, open, onClose }: QuickCreateModalProps) {
               ) : !availabilityMessage ? (
                 <div className={isDark ? 'rounded-xl border border-slate-700 bg-slate-900/80 px-3 py-2 text-xs text-slate-400' : 'rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-500'}>Selecciona una fecha y servicio para cargar horarios.</div>
               ) : null}
+                </>
+              )}
             </div>
 
             {lastAppointmentError && (
@@ -570,8 +634,8 @@ function QuickCreateModal({ type, open, onClose }: QuickCreateModalProps) {
 
         <div className="flex justify-end gap-3 pt-2">
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button onClick={() => void handleSave()} disabled={isSubmitting}>
-            {isSubmitting ? 'Creando…' : 'Guardar'}
+          <Button onClick={() => void handleSave()} disabled={isSubmitting || (type === 'appointment' && availabilityLoading)}>
+            {isSubmitting ? 'Creando…' : type === 'appointment' && availabilityLoading ? 'Consultando horarios…' : 'Guardar'}
           </Button>
         </div>
       </div>

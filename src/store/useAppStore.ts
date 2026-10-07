@@ -64,6 +64,7 @@ interface AppState {
   usageMetrics: UsageMetric[]
   availability: AvailabilitySlot[]
   availabilityMessage: string | null
+  availabilityLoading: boolean
   lastAppointmentError: string | null
   analyticsKpis: Array<{ id: string; label: string; value: string; delta: string; positive: boolean; accent: 'emerald' | 'violet' | 'amber' | 'rose' }>
   dailyBookings: Array<{ day: string; bookings: number }>
@@ -115,6 +116,15 @@ interface AppState {
   addTenantFromServer: (tenant: Partial<Tenant> | Record<string, unknown>) => void
   clearTenantSetupFlag: (tenantId: string) => void
 }
+
+// Cada consulta de disponibilidad lleva un numero de secuencia: si el usuario cambia fecha o servicio
+// antes de que responda la anterior, la respuesta vieja se descarta y no pisa a la nueva.
+let availabilityRequestSeq = 0
+
+// Igual para hydrateFromApi: si hay varias cargas en vuelo (refresco automatico, foco de ventana,
+// recarga tras crear una cita), solo se aplica la ultima en iniciarse. Asi una respuesta mas vieja,
+// pedida antes de que se creara una cita, no pisa la lista nueva y "desaparece" la cita.
+let hydrateRequestSeq = 0
 
 const getActiveTenantId = () => {
   if (typeof window === 'undefined') return ''
@@ -300,6 +310,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   usageMetrics: defaultUsageMetrics,
   availability: [],
   availabilityMessage: null,
+  availabilityLoading: false,
   lastAppointmentError: null,
   analyticsKpis: [],
   dailyBookings: [],
@@ -536,6 +547,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     // Actualizar): no borra el detalle de cliente abierto y, si falla la red, conserva los datos
     // que ya se muestran en vez de vaciar el panel y mostrar un error.
     const silent = options?.silent === true
+    const requestId = ++hydrateRequestSeq
     try {
       const tenantId = getActiveTenantId()
       const [servicesResponse, appointmentsResponse, businessResponse, customersResponse] = await Promise.all([
@@ -553,6 +565,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       // Si el usuario cambio de negocio mientras esta peticion estaba en vuelo, estos datos
       // son del negocio anterior: se descartan (el efecto de cambio de tenant ya lanzo otra).
       if (getActiveTenantId() !== tenantId) return
+      if (requestId !== hydrateRequestSeq) return
 
       // Se necesita la zona horaria del negocio ANTES de normalizar las citas: fecha_inicio llega
       // en UTC desde el backend y hay que convertirla al horario local del negocio para mostrar
@@ -590,8 +603,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         })
       }
     } catch (error) {
+      if (requestId !== hydrateRequestSeq) return
       if (silent) {
         console.warn('Background refresh failed; keeping the data already loaded.', error)
+        if (!get().isHydrated) set({ isHydrated: true })
         return
       }
       console.warn('API hydration failed; the store remains empty until the backend is available.', error)
@@ -805,6 +820,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   loadAvailability: async (serviceId: string, date: string) => {
+    const requestId = ++availabilityRequestSeq
+    set({ availabilityLoading: true, availability: [], availabilityMessage: null })
+
     try {
       const tenantId = getActiveTenantId()
       // serviceId y date se ignoraban antes: siempre se llamaba a getAvailability(tenantId) sin
@@ -812,6 +830,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       // service_id/date y el panel mostrara "No pudimos cargar la disponibilidad" para cualquier
       // fecha.
       const response = await getAvailability(tenantId, serviceId, date)
+      if (requestId !== availabilityRequestSeq) return
       const rawSlots = Array.isArray(response?.slots) ? response.slots : Array.isArray(response?.items) ? response.items : []
       const available = typeof response?.available === 'boolean' ? response.available : rawSlots.length > 0
       const reason = typeof response?.reason === 'string' ? response.reason : null
@@ -820,10 +839,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({
         availability: rawSlots.map((item, index) => normalizeAvailability((item as unknown as Record<string, unknown>) ?? {}, `slot-${index + 1}`)),
         availabilityMessage: message,
+        availabilityLoading: false,
       })
     } catch (error) {
+      if (requestId !== availabilityRequestSeq) return
       console.warn('Availability could not be loaded from the backend.', error)
-      set({ availability: [], availabilityMessage: 'No pudimos cargar la disponibilidad. Intenta otra fecha.' })
+      set({ availability: [], availabilityMessage: 'No pudimos cargar la disponibilidad. Intenta otra fecha.', availabilityLoading: false })
     }
   },
 
@@ -1122,6 +1143,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       set((state) => ({
         appointments: [created, ...state.appointments.filter((item) => item.id !== created.id)],
       }))
+
+      // La cita ya se muestra al instante (optimista); se recarga desde el servidor para que la lista
+      // quede con los datos reales (hora, estado, precio) y no dependa de lo que armo el panel.
+      void get().hydrateFromApi({ silent: true })
     } catch (error) {
       const message = error instanceof Error && error.message ? error.message : 'Sin conexión. Intenta de nuevo.'
       set({ lastAppointmentError: message })
