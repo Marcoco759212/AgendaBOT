@@ -19,7 +19,7 @@ const plans = [
     annual: 329,
     description: 'Ideal para negocios en crecimiento.',
     featured: false,
-    features: ['1 sucursal', 'WhatsApp + IA', 'Calendario básico', 'Recordatorios automáticos'],
+    features: ['1 sucursal', 'WhatsApp + IA', 'Integración Google Calendar', 'Recordatorios automáticos'],
     limits: { conversations: 500, branches: 1, calendars: 1 },
   },
   {
@@ -39,7 +39,7 @@ const plans = [
     annual: 1249,
     description: 'Para cadenas y franquicias.',
     featured: false,
-    features: ['Sucursales ilimitadas', 'IA personalizada', 'Soporte prioritario', 'Analytics ejecutivo'],
+    features: ['Sucursales ilimitadas', 'IA personalizada', 'Integración Google Calendar', 'Soporte prioritario', 'Analytics ejecutivo'],
     limits: { conversations: 5000, branches: 99, calendars: 5 },
   },
 ]
