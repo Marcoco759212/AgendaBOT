@@ -66,3 +66,46 @@ textarea {
 ::selection {
   background: rgba(16, 185, 129, 0.3);
 }
+
+/* Scrollbars delgados que siguen el estilo de la app (violeta en oscuro, esmeralda en claro).
+   Uso: className="scroll-themed scroll-themed-dark" | "scroll-themed scroll-themed-light" */
+.scroll-themed {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll-thumb) transparent;
+}
+
+.scroll-themed::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.scroll-themed::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 999px;
+}
+
+.scroll-themed::-webkit-scrollbar-thumb {
+  background-color: var(--scroll-thumb);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  transition: background-color 0.2s ease;
+}
+
+.scroll-themed::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scroll-thumb-hover);
+}
+
+.scroll-themed::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.scroll-themed-dark {
+  --scroll-thumb: rgba(139, 92, 246, 0.35);
+  --scroll-thumb-hover: rgba(139, 92, 246, 0.6);
+}
+
+.scroll-themed-light {
+  --scroll-thumb: rgba(16, 185, 129, 0.4);
+  --scroll-thumb-hover: rgba(16, 185, 129, 0.65);
+}

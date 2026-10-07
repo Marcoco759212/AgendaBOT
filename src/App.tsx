@@ -538,7 +538,7 @@ function AppShell() {
               <button
                 key={key}
                 onClick={() => handleNavigate(key)}
-                className={`flex min-w-[64px] shrink-0 snap-start flex-col items-center gap-1 rounded-xl px-3 py-2 text-[11px] ${
+                className={`flex min-w-[76px] flex-1 snap-start flex-col items-center justify-center gap-1 whitespace-nowrap rounded-xl px-3 py-2 text-[11px] sm:text-xs ${
                   activeView === key ? isDark ? 'bg-emerald-500/10 text-emerald-200' : 'bg-emerald-500/10 text-emerald-700' : isDark ? 'text-slate-300' : 'text-slate-600'
                 }`}
               >

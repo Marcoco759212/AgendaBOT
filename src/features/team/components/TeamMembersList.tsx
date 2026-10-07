@@ -77,7 +77,8 @@ export default function TeamMembersList() {
           No hay miembros en este tenant.
         </div>
       ) : (
-        <div className={isDark ? 'overflow-hidden rounded-2xl border border-slate-700' : 'overflow-hidden rounded-2xl border border-slate-200'}>
+        <div className={isDark ? 'scroll-themed scroll-themed-dark overflow-x-auto rounded-2xl border border-slate-700' : 'scroll-themed scroll-themed-light overflow-x-auto rounded-2xl border border-slate-200'}>
+          <div className="min-w-[640px]">
           <div className={isDark ? 'grid grid-cols-[1.4fr_1.2fr_1fr_0.9fr] gap-3 bg-slate-950/90 px-4 py-3 text-[10px] uppercase tracking-[0.2em] text-slate-400' : 'grid grid-cols-[1.4fr_1.2fr_1fr_0.9fr] gap-3 bg-slate-100 px-4 py-3 text-[10px] uppercase tracking-[0.2em] text-slate-500'}>
             <span>Nombre</span>
             <span>Correo</span>
@@ -125,6 +126,7 @@ export default function TeamMembersList() {
               </div>
             )
           })}
+          </div>
         </div>
       )}
 
