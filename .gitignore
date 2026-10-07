@@ -47,3 +47,8 @@ Thumbs.db
 coverage/
 
 .claude/
+# brag launch video output
+brag-output*
+
+# Salidas locales de Claude
+Claude outputs/
