@@ -6,6 +6,16 @@ type DaySchedule = { start: string; end: string; enabled: boolean; prompt_custom
 
 const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const
 
+const DAY_LABELS: Record<string, string> = {
+  mon: 'Lunes',
+  tue: 'Martes',
+  wed: 'Miércoles',
+  thu: 'Jueves',
+  fri: 'Viernes',
+  sat: 'Sábado',
+  sun: 'Domingo',
+}
+
 const DEFAULT_PROMPT = 'Atiende citas, confirma disponibilidad y responde con tono profesional.'
 
 const DEFAULT_SCHEDULE: Record<string, DaySchedule> = {
@@ -44,6 +54,15 @@ export default function BusinessHoursSettings() {
   const business = tenants.find((tenant) => tenant.id === activeTenantId) ?? tenants[0]
   const [horarioAtencion, setHorarioAtencion] = useState<Record<string, DaySchedule>>(() => buildSchedule(business?.horarioAtencion))
   const [isSaving, setIsSaving] = useState(false)
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+
+  // El aviso de guardado desaparece solo despues de unos segundos.
+  useEffect(() => {
+    if (!feedback) return
+
+    const timeoutId = window.setTimeout(() => setFeedback(null), 4000)
+    return () => window.clearTimeout(timeoutId)
+  }, [feedback])
 
   // Igual que en Configuracion del negocio: si cambias de tenant sin que este componente se
   // desmonte, hay que refrescar el horario mostrado con el del negocio nuevo (o con los
@@ -84,9 +103,16 @@ export default function BusinessHoursSettings() {
 
     try {
       setIsSaving(true)
+      setFeedback(null)
       await updateBusiness({
         id: business?.id ?? activeTenantId,
         horario_atencion: normalizedSchedule,
+      })
+      setFeedback({ type: 'success', message: 'Horario guardado correctamente.' })
+    } catch (error) {
+      setFeedback({
+        type: 'error',
+        message: error instanceof Error && error.message ? error.message : 'No pudimos guardar el horario. Inténtalo de nuevo.',
       })
     } finally {
       setIsSaving(false)
@@ -113,11 +139,24 @@ export default function BusinessHoursSettings() {
         </Button>
       </div>
 
+      {feedback && (
+        <div
+          role="status"
+          className={
+            feedback.type === 'error'
+              ? (isDark ? 'mb-4 rounded-xl border border-rose-500/25 bg-rose-500/10 px-3 py-2 text-sm text-rose-200' : 'mb-4 rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700')
+              : (isDark ? 'mb-4 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200' : 'mb-4 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-700')
+          }
+        >
+          {feedback.message}
+        </div>
+      )}
+
       <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
         {Object.entries(horarioAtencion).map(([day, value]) => (
           <div key={day} className={isDark ? 'rounded-xl border border-slate-700 bg-slate-950/70 p-2.5' : 'rounded-xl border border-slate-300 bg-slate-50 p-2.5'}>
             <div className="mb-2 flex items-center justify-between gap-3">
-              <span className={isDark ? 'text-xs font-medium uppercase tracking-[0.18em] text-slate-300' : 'text-xs font-medium uppercase tracking-[0.18em] text-slate-700'}>{day}</span>
+              <span className={isDark ? 'text-xs font-medium uppercase tracking-[0.18em] text-slate-300' : 'text-xs font-medium uppercase tracking-[0.18em] text-slate-700'}>{DAY_LABELS[day] ?? day}</span>
               <label className={isDark ? 'inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] text-slate-300' : 'inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] text-slate-600'}>
                 <input
                   type="checkbox"
